@@ -186,8 +186,27 @@ builder.Services.AddAuthorization();
 var configuredOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 var allowedOriginSet = configuredOrigins
     .Where(origin => !string.IsNullOrWhiteSpace(origin))
-    .Select(origin => origin.Trim())
+    .Select(origin => origin.Trim().TrimEnd('/'))
     .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+var configuredHostSuffixes = builder.Configuration.GetSection("Cors:AllowedHostSuffixes").Get<string[]>() ?? Array.Empty<string>();
+var allowedHostSuffixes = configuredHostSuffixes
+    .Where(suffix => !string.IsNullOrWhiteSpace(suffix))
+    .Select(suffix => suffix.Trim().TrimStart('.'))
+    .ToArray();
+
+var allowAllOrigins = builder.Configuration.GetValue<bool>("Cors:AllowAllOrigins");
+
+static bool HostMatchesSuffix(string host, string suffix)
+{
+    if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(suffix))
+    {
+        return false;
+    }
+
+    return host.Equals(suffix, StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith($".{suffix}", StringComparison.OrdinalIgnoreCase);
+}
 
 bool IsAllowedOrigin(string origin)
 {
@@ -196,18 +215,30 @@ bool IsAllowedOrigin(string origin)
         return false;
     }
 
-    if (allowedOriginSet.Contains(origin))
+    if (allowAllOrigins)
     {
         return true;
     }
 
-    if (builder.Environment.IsDevelopment() && string.Equals(origin, "null", StringComparison.OrdinalIgnoreCase))
+    var normalizedOrigin = origin.Trim().TrimEnd('/');
+
+    if (allowedOriginSet.Contains(normalizedOrigin))
+    {
+        return true;
+    }
+
+    if (builder.Environment.IsDevelopment() && string.Equals(normalizedOrigin, "null", StringComparison.OrdinalIgnoreCase))
     {
         // Allows local manual testing from file:// in development only.
         return true;
     }
 
-    if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+    if (!Uri.TryCreate(normalizedOrigin, UriKind.Absolute, out var uri))
+    {
+        return false;
+    }
+
+    if (uri.Scheme is not Uri.UriSchemeHttp and not Uri.UriSchemeHttps)
     {
         return false;
     }
@@ -216,6 +247,11 @@ bool IsAllowedOrigin(string origin)
     if (string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
         || string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
         || string.Equals(uri.Host, "::1", StringComparison.OrdinalIgnoreCase))
+    {
+        return true;
+    }
+
+    if (uri.Scheme == Uri.UriSchemeHttps && allowedHostSuffixes.Any(suffix => HostMatchesSuffix(uri.Host, suffix)))
     {
         return true;
     }
