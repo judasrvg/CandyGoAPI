@@ -11,6 +11,7 @@ public interface IClientService
     Task<ClientDto?> GetByIdAsync(long id);
     Task<ClientDto?> GetByPhoneAsync(string phone);
     Task<ClientDto> CreateByAdminAsync(CreateClientByAdminRequest request);
+    Task<ClientDeleteResultDto> DeleteOrDeactivateAsync(long id);
 }
 
 public sealed class ClientService : IClientService
@@ -134,5 +135,102 @@ SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
         }
 
         return created;
+    }
+
+    public async Task<ClientDeleteResultDto> DeleteOrDeactivateAsync(long id)
+    {
+        await using var connection = _connectionFactory.CreateConnection();
+        await connection.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        var probe = await connection.QuerySingleOrDefaultAsync<ClientDeleteProbeRow>(@"
+SELECT c.id,
+       c.full_name,
+       c.is_active,
+       wa.id AS wallet_account_id
+FROM cg.clients c
+LEFT JOIN cg.wallet_accounts wa ON wa.client_id = c.id
+WHERE c.id = @Id",
+            new { Id = id },
+            transaction);
+
+        if (probe is null)
+        {
+            throw new KeyNotFoundException("Cliente no encontrado.");
+        }
+
+        var ordersCount = await connection.ExecuteScalarAsync<int>(
+            "SELECT COUNT(1) FROM cg.orders WHERE client_id = @Id",
+            new { Id = id },
+            transaction);
+
+        var walletMovementsCount = await connection.ExecuteScalarAsync<int>(@"
+SELECT COUNT(1)
+FROM cg.wallet_movements wm
+INNER JOIN cg.wallet_accounts wa ON wa.id = wm.wallet_account_id
+WHERE wa.client_id = @Id",
+            new { Id = id },
+            transaction);
+
+        var hadDependencies = ordersCount > 0 || walletMovementsCount > 0;
+        if (hadDependencies)
+        {
+            if (probe.IsActive)
+            {
+                await connection.ExecuteAsync(
+                    "UPDATE cg.clients SET is_active = 0, updated_at = SYSUTCDATETIME() WHERE id = @Id",
+                    new { Id = id },
+                    transaction);
+            }
+
+            await transaction.CommitAsync();
+
+            return new ClientDeleteResultDto
+            {
+                ClientId = id,
+                Action = "DEACTIVATED",
+                HadDependencies = true,
+                IsActive = false,
+                OrdersCount = ordersCount,
+                WalletMovementsCount = walletMovementsCount,
+                Message = probe.IsActive
+                    ? $"Cliente desactivado por dependencias ({ordersCount} órdenes, {walletMovementsCount} movimientos)."
+                    : $"Cliente ya estaba desactivado y mantiene dependencias ({ordersCount} órdenes, {walletMovementsCount} movimientos)."
+            };
+        }
+
+        if (probe.WalletAccountId.HasValue)
+        {
+            await connection.ExecuteAsync(
+                "DELETE FROM cg.wallet_accounts WHERE client_id = @Id",
+                new { Id = id },
+                transaction);
+        }
+
+        await connection.ExecuteAsync(
+            "DELETE FROM cg.clients WHERE id = @Id",
+            new { Id = id },
+            transaction);
+
+        await transaction.CommitAsync();
+
+        return new ClientDeleteResultDto
+        {
+            ClientId = id,
+            Action = "DELETED",
+            HadDependencies = false,
+            IsActive = false,
+            OrdersCount = 0,
+            WalletMovementsCount = 0,
+            Message = "Cliente eliminado definitivamente."
+        };
+    }
+
+    private sealed class ClientDeleteProbeRow
+    {
+        public long Id { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+        public long? WalletAccountId { get; set; }
     }
 }

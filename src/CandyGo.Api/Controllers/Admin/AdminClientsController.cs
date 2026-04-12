@@ -42,4 +42,11 @@ public sealed class AdminClientsController : ControllerBase
         var created = await _clientService.CreateByAdminAsync(request);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
+
+    [HttpDelete("{id:long}")]
+    public async Task<ActionResult<ClientDeleteResultDto>> DeleteOrDeactivate(long id)
+    {
+        var result = await _clientService.DeleteOrDeactivateAsync(id);
+        return Ok(result);
+    }
 }
