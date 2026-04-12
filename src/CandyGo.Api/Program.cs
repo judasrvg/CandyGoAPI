@@ -7,6 +7,7 @@ using CandyGo.Api.Middleware;
 using CandyGo.Api.Security;
 using CandyGo.Api.Services;
 using Dapper;
+using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
@@ -307,6 +308,67 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+startupLogger.LogInformation("CandyGo API environment: {EnvironmentName}", app.Environment.EnvironmentName);
+var envConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+if (!string.IsNullOrWhiteSpace(envConnectionString))
+{
+    startupLogger.LogWarning("ConnectionStrings__DefaultConnection environment variable is set and overrides appsettings.");
+    try
+    {
+        var envSqlBuilder = new SqlConnectionStringBuilder(envConnectionString);
+        startupLogger.LogInformation(
+            "SQL target from ENV: DataSource={DataSource}; InitialCatalog={InitialCatalog}; Encrypt={Encrypt}; TrustServerCertificate={TrustServerCertificate}",
+            envSqlBuilder.DataSource,
+            envSqlBuilder.InitialCatalog,
+            envSqlBuilder.Encrypt,
+            envSqlBuilder.TrustServerCertificate);
+    }
+    catch (Exception ex)
+    {
+        startupLogger.LogWarning(ex, "Could not parse ConnectionStrings__DefaultConnection environment variable.");
+    }
+}
+
+try
+{
+    var connectionString = app.Configuration.GetConnectionString("DefaultConnection");
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        startupLogger.LogWarning("DefaultConnection is empty.");
+    }
+    else
+    {
+        var sqlBuilder = new SqlConnectionStringBuilder(connectionString);
+        startupLogger.LogInformation(
+            "SQL target configured: DataSource={DataSource}; InitialCatalog={InitialCatalog}; Encrypt={Encrypt}; TrustServerCertificate={TrustServerCertificate}",
+            sqlBuilder.DataSource,
+            sqlBuilder.InitialCatalog,
+            sqlBuilder.Encrypt,
+            sqlBuilder.TrustServerCertificate);
+
+        var dataSource = sqlBuilder.DataSource?.Trim() ?? string.Empty;
+        var isLocalSqlTarget =
+            dataSource.StartsWith(@".\", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(dataSource, ".", StringComparison.OrdinalIgnoreCase)
+            || dataSource.StartsWith("(local)", StringComparison.OrdinalIgnoreCase)
+            || dataSource.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)
+            || dataSource.StartsWith("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            || dataSource.StartsWith("::1", StringComparison.OrdinalIgnoreCase);
+
+        if (!app.Environment.IsDevelopment() && isLocalSqlTarget)
+        {
+            startupLogger.LogWarning(
+                "Non-development environment is using a local SQL target ({DataSource}). Verify ConnectionStrings__DefaultConnection in deployment settings.",
+                dataSource);
+        }
+    }
+}
+catch (Exception ex)
+{
+    startupLogger.LogWarning(ex, "Could not parse DefaultConnection for startup diagnostics.");
+}
 
 if (!app.Environment.IsDevelopment())
 {

@@ -49,6 +49,42 @@ public sealed class ExceptionHandlingMiddleware
         {
             await WriteError(context, HttpStatusCode.BadRequest, "La operación viola una restricción de datos.", ex.Number.ToString());
         }
+        catch (SqlException ex) when (ex.Number == 0)
+        {
+            _logger.LogError(ex, "Database connectivity exception");
+            await WriteError(
+                context,
+                HttpStatusCode.ServiceUnavailable,
+                "No se pudo conectar al servidor de base de datos. Verifica host, puerto, credenciales y firewall.",
+                ex.Number.ToString());
+        }
+        catch (SqlException ex) when (ex.Number == -2)
+        {
+            _logger.LogError(ex, "Database timeout exception");
+            await WriteError(
+                context,
+                HttpStatusCode.GatewayTimeout,
+                "La conexión a la base de datos excedió el tiempo de espera.",
+                ex.Number.ToString());
+        }
+        catch (SqlException ex) when (ex.Number == 18456)
+        {
+            _logger.LogError(ex, "Database login failed");
+            await WriteError(
+                context,
+                HttpStatusCode.Unauthorized,
+                "Credenciales SQL inválidas para la base de datos configurada.",
+                ex.Number.ToString());
+        }
+        catch (SqlException ex) when (ex.Number == 4060)
+        {
+            _logger.LogError(ex, "Database open failed");
+            await WriteError(
+                context,
+                HttpStatusCode.BadGateway,
+                "No se pudo abrir la base de datos especificada en la cadena de conexión.",
+                ex.Number.ToString());
+        }
         catch (SqlException ex)
         {
             _logger.LogError(ex, "Database exception");
