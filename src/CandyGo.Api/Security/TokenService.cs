@@ -17,7 +17,8 @@ public sealed class TokenService : ITokenService
 
     public TokenResult CreateToken(long userId, string phone, string displayName, string role)
     {
-        var expiresAt = DateTime.UtcNow.AddMinutes(_options.ExpiresMinutes <= 0 ? 120 : _options.ExpiresMinutes);
+        var now = DateTime.UtcNow;
+        var expiresAt = now.AddMinutes(_options.ExpiresMinutes <= 0 ? 120 : _options.ExpiresMinutes);
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Key));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
@@ -29,13 +30,15 @@ public sealed class TokenService : ITokenService
             new(ClaimTypes.NameIdentifier, userId.ToString()),
             new(ClaimTypes.Name, phone),
             new("display_name", displayName),
-            new(ClaimTypes.Role, role)
+            new(ClaimTypes.Role, role),
+            new(JwtRegisteredClaimNames.Iat, EpochTime.GetIntDate(now).ToString(), ClaimValueTypes.Integer64)
         };
 
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,
             audience: _options.Audience,
             claims: claims,
+            notBefore: now,
             expires: expiresAt,
             signingCredentials: creds);
 
