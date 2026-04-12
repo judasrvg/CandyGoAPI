@@ -8,11 +8,16 @@ public sealed class ExceptionHandlingMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ExceptionHandlingMiddleware> _logger;
+    private readonly IConfiguration _configuration;
 
-    public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
+    public ExceptionHandlingMiddleware(
+        RequestDelegate next,
+        ILogger<ExceptionHandlingMiddleware> logger,
+        IConfiguration configuration)
     {
         _next = next;
         _logger = logger;
+        _configuration = configuration;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -51,7 +56,29 @@ public sealed class ExceptionHandlingMiddleware
         }
         catch (SqlException ex) when (ex.Number == 0)
         {
-            _logger.LogError(ex, "Database connectivity exception");
+            var connectionString = _configuration.GetConnectionString("DefaultConnection");
+            string? dataSource = null;
+            string? database = null;
+
+            if (!string.IsNullOrWhiteSpace(connectionString))
+            {
+                try
+                {
+                    var builder = new SqlConnectionStringBuilder(connectionString);
+                    dataSource = builder.DataSource;
+                    database = builder.InitialCatalog;
+                }
+                catch
+                {
+                    // Ignore parse diagnostics errors.
+                }
+            }
+
+            _logger.LogError(
+                ex,
+                "Database connectivity exception. DataSource={DataSource}; InitialCatalog={InitialCatalog}",
+                dataSource,
+                database);
             await WriteError(
                 context,
                 HttpStatusCode.ServiceUnavailable,
