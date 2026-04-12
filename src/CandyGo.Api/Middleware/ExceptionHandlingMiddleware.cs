@@ -8,16 +8,11 @@ public sealed class ExceptionHandlingMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ExceptionHandlingMiddleware> _logger;
-    private readonly IConfiguration _configuration;
 
-    public ExceptionHandlingMiddleware(
-        RequestDelegate next,
-        ILogger<ExceptionHandlingMiddleware> logger,
-        IConfiguration configuration)
+    public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
     {
         _next = next;
         _logger = logger;
-        _configuration = configuration;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -53,64 +48,6 @@ public sealed class ExceptionHandlingMiddleware
         catch (SqlException ex) when (ex.Number == 547)
         {
             await WriteError(context, HttpStatusCode.BadRequest, "La operación viola una restricción de datos.", ex.Number.ToString());
-        }
-        catch (SqlException ex) when (ex.Number == 0)
-        {
-            var connectionString = _configuration.GetConnectionString("DefaultConnection");
-            string? dataSource = null;
-            string? database = null;
-
-            if (!string.IsNullOrWhiteSpace(connectionString))
-            {
-                try
-                {
-                    var builder = new SqlConnectionStringBuilder(connectionString);
-                    dataSource = builder.DataSource;
-                    database = builder.InitialCatalog;
-                }
-                catch
-                {
-                    // Ignore parse diagnostics errors.
-                }
-            }
-
-            _logger.LogError(
-                ex,
-                "Database connectivity exception. DataSource={DataSource}; InitialCatalog={InitialCatalog}",
-                dataSource,
-                database);
-            await WriteError(
-                context,
-                HttpStatusCode.ServiceUnavailable,
-                "No se pudo conectar al servidor de base de datos. Verifica host, puerto, credenciales y firewall.",
-                ex.Number.ToString());
-        }
-        catch (SqlException ex) when (ex.Number == -2)
-        {
-            _logger.LogError(ex, "Database timeout exception");
-            await WriteError(
-                context,
-                HttpStatusCode.GatewayTimeout,
-                "La conexión a la base de datos excedió el tiempo de espera.",
-                ex.Number.ToString());
-        }
-        catch (SqlException ex) when (ex.Number == 18456)
-        {
-            _logger.LogError(ex, "Database login failed");
-            await WriteError(
-                context,
-                HttpStatusCode.Unauthorized,
-                "Credenciales SQL inválidas para la base de datos configurada.",
-                ex.Number.ToString());
-        }
-        catch (SqlException ex) when (ex.Number == 4060)
-        {
-            _logger.LogError(ex, "Database open failed");
-            await WriteError(
-                context,
-                HttpStatusCode.BadGateway,
-                "No se pudo abrir la base de datos especificada en la cadena de conexión.",
-                ex.Number.ToString());
         }
         catch (SqlException ex)
         {
