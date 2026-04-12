@@ -34,6 +34,7 @@ public sealed class TokenService : ITokenService
         {
             new(JwtRegisteredClaimNames.Sub, userId.ToString()),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
+            new(JwtRegisteredClaimNames.Iat, EpochTime.GetIntDate(issuedAt).ToString(), ClaimValueTypes.Integer64),
             new(JwtRegisteredClaimNames.UniqueName, phone),
             new(ClaimTypes.NameIdentifier, userId.ToString()),
             new(ClaimTypes.Name, phone),
@@ -47,7 +48,6 @@ public sealed class TokenService : ITokenService
             claims: claims,
             notBefore: issuedAt,
             expires: expiresAt,
-            issuedAt: issuedAt,
             signingCredentials: creds);
 
         var tokenValue = new JwtSecurityTokenHandler().WriteToken(token);
