@@ -2,10 +2,11 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 COPY . .
-RUN dotnet restore "./CandyGoAPI/CandyGo.Api.csproj"
-RUN dotnet publish "./CandyGoAPI/CandyGo.Api.csproj" -c Release -o /app/publish
+WORKDIR /src/src/CandyGo.Api
+RUN dotnet restore
+RUN dotnet publish -c Release -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 
