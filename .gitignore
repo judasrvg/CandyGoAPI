@@ -5,3 +5,5 @@
 /.vs
 /src/CandyGo.Api/bin/Debug/net8.0
 /src/CandyGo.Api/obj
+/src/CandyGo.Api/bin/Release/net8.0
+/src/CandyGo.Api/Properties/PublishProfiles
