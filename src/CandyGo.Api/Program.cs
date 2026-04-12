@@ -184,23 +184,53 @@ builder.Services
 builder.Services.AddAuthorization();
 
 var configuredOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+var allowedOriginSet = configuredOrigins
+    .Where(origin => !string.IsNullOrWhiteSpace(origin))
+    .Select(origin => origin.Trim())
+    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+bool IsAllowedOrigin(string origin)
+{
+    if (string.IsNullOrWhiteSpace(origin))
+    {
+        return false;
+    }
+
+    if (allowedOriginSet.Contains(origin))
+    {
+        return true;
+    }
+
+    if (builder.Environment.IsDevelopment() && string.Equals(origin, "null", StringComparison.OrdinalIgnoreCase))
+    {
+        // Allows local manual testing from file:// in development only.
+        return true;
+    }
+
+    if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+    {
+        return false;
+    }
+
+    // Any localhost/loopback port is allowed for local tools.
+    if (string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(uri.Host, "::1", StringComparison.OrdinalIgnoreCase))
+    {
+        return true;
+    }
+
+    return false;
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("ClientApps", policy =>
     {
-        if (configuredOrigins.Length > 0)
-        {
-            policy.WithOrigins(configuredOrigins)
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials();
-
-            return;
-        }
-
-        policy.AllowAnyOrigin()
+        policy.SetIsOriginAllowed(IsAllowedOrigin)
               .AllowAnyHeader()
-              .AllowAnyMethod();
+              .AllowAnyMethod()
+              .AllowCredentials();
     });
 });
 
