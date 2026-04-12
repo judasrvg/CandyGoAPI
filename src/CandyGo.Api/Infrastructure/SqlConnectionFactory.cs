@@ -11,6 +11,7 @@ public sealed class SqlConnectionFactory : IDbConnectionFactory
     private readonly IHostEnvironment _environment;
     private readonly ILogger<SqlConnectionFactory> _logger;
     private readonly string? _appsettingsConnectionString;
+    private readonly bool _runningInContainer;
 
     public SqlConnectionFactory(
         IConfiguration configuration,
@@ -21,6 +22,10 @@ public sealed class SqlConnectionFactory : IDbConnectionFactory
         _environment = environment;
         _logger = logger;
         _appsettingsConnectionString = LoadAppsettingsConnectionString();
+        _runningInContainer = string.Equals(
+            Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     public SqlConnection CreateConnection()
@@ -31,17 +36,30 @@ public sealed class SqlConnectionFactory : IDbConnectionFactory
             throw new InvalidOperationException("ConnectionStrings:DefaultConnection no está configurado.");
         }
 
-        if (!_environment.IsDevelopment()
+        var usedFallback = false;
+
+        if ((!_environment.IsDevelopment() || _runningInContainer)
             && IsLocalSqlTarget(connectionString)
             && !string.IsNullOrWhiteSpace(_appsettingsConnectionString)
             && !IsLocalSqlTarget(_appsettingsConnectionString))
         {
             _logger.LogWarning(
-                "Detected local SQL target in non-development environment. Falling back to appsettings.json SQL target.");
+                "Detected local SQL target ({LocalTarget}) for current runtime. Falling back to appsettings.json SQL target.",
+                GetDataSourceSafe(connectionString));
             connectionString = _appsettingsConnectionString;
+            usedFallback = true;
         }
 
         connectionString = EnsureTcpDataSource(connectionString);
+
+        _logger.LogInformation(
+            "SQL target resolved. Environment={EnvironmentName}; InContainer={RunningInContainer}; DataSource={DataSource}; Database={Database}; UsedFallback={UsedFallback}",
+            _environment.EnvironmentName,
+            _runningInContainer,
+            GetDataSourceSafe(connectionString),
+            GetDatabaseSafe(connectionString),
+            usedFallback);
+
         return new SqlConnection(connectionString);
     }
 
@@ -136,6 +154,30 @@ public sealed class SqlConnectionFactory : IDbConnectionFactory
         catch
         {
             return connectionString;
+        }
+    }
+
+    private static string? GetDataSourceSafe(string connectionString)
+    {
+        try
+        {
+            return new SqlConnectionStringBuilder(connectionString).DataSource;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? GetDatabaseSafe(string connectionString)
+    {
+        try
+        {
+            return new SqlConnectionStringBuilder(connectionString).InitialCatalog;
+        }
+        catch
+        {
+            return null;
         }
     }
 }
