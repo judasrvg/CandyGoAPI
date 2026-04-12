@@ -238,7 +238,9 @@ bool IsAllowedOrigin(string origin)
         return false;
     }
 
-    if (uri.Scheme is not Uri.UriSchemeHttp and not Uri.UriSchemeHttps)
+    var isHttp = string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase);
+    var isHttps = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+    if (!isHttp && !isHttps)
     {
         return false;
     }
