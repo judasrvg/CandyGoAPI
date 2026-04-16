@@ -23,7 +23,9 @@ public sealed class SettingsController : ControllerBase
         var rules = await _settingsService.GetBusinessRulesAsync();
         return Ok(new PublicSettingsDto
         {
-            DeliveryFee = rules.DeliveryFee
+            DeliveryFee = rules.DeliveryFee,
+            RewardPercent = rules.RewardPercent,
+            CashConversionRate = rules.CashConversionRate
         });
     }
 }

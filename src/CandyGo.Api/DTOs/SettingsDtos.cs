@@ -12,6 +12,8 @@ public sealed class BusinessRuleDto
 public sealed class PublicSettingsDto
 {
     public decimal DeliveryFee { get; set; }
+    public decimal RewardPercent { get; set; }
+    public decimal CashConversionRate { get; set; }
 }
 
 public sealed class UpdateBusinessRuleRequest
