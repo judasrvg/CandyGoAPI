@@ -37,7 +37,7 @@ BEGIN
         local_last_viewed_at DATETIME2(0) NULL,
         last_sync_at DATETIME2(0) NOT NULL CONSTRAINT DF_cg_local_orders_last_sync_at DEFAULT SYSUTCDATETIME(),
         row_version ROWVERSION,
-        CONSTRAINT CK_cg_local_orders_status CHECK (status IN ('PENDIENTE', 'CONFIRMADA', 'PREPARANDO', 'LISTA', 'ENTREGADA', 'CANCELADA')),
+        CONSTRAINT CK_cg_local_orders_status CHECK (status IN ('PENDIENTE', 'CONFIRMADA', 'ENTREGADA', 'CANCELADA')),
         CONSTRAINT CK_cg_local_orders_fulfillment_type CHECK (fulfillment_type IN ('PICKUP', 'DELIVERY')),
         CONSTRAINT CK_cg_local_orders_totals CHECK (
             subtotal_candycash >= 0

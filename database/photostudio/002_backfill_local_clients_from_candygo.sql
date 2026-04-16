@@ -14,7 +14,11 @@ SET XACT_ABORT ON;
 GO
 
 DECLARE @CompletedStateType INT = 1; -- Confirmed en PhotoStudio actual
+DECLARE @sql NVARCHAR(MAX);
 
+IF COL_LENGTH('dbo.Reservation', 'ApplyCandyCashBonus') IS NULL
+BEGIN
+    SET @sql = N'
 INSERT INTO dbo.cg_local_reservation_reward_queue (
     reservation_id,
     client_phone,
@@ -32,5 +36,34 @@ WHERE r.CurrentStateType = @CompletedStateType
       SELECT 1
       FROM dbo.cg_local_reservation_reward_queue q
       WHERE q.reservation_id = r.Id
-  );
+  );';
+END
+ELSE
+BEGIN
+    SET @sql = N'
+INSERT INTO dbo.cg_local_reservation_reward_queue (
+    reservation_id,
+    client_phone,
+    reservation_total
+)
+SELECT
+    r.Id,
+    r.ClientPhone,
+    ISNULL(r.TotalAmount, 0)
+FROM dbo.Reservation r
+INNER JOIN dbo.cg_local_clients c
+    ON c.phone = r.ClientPhone
+WHERE r.CurrentStateType = @CompletedStateType
+  AND ISNULL(r.ApplyCandyCashBonus, 0) = 1
+  AND NOT EXISTS (
+      SELECT 1
+      FROM dbo.cg_local_reservation_reward_queue q
+      WHERE q.reservation_id = r.Id
+  );';
+END
+
+EXEC sp_executesql
+    @sql,
+    N'@CompletedStateType INT',
+    @CompletedStateType = @CompletedStateType;
 GO

@@ -150,7 +150,7 @@ BEGIN
         row_version ROWVERSION,
         CONSTRAINT FK_cg_orders_client_id FOREIGN KEY (client_id) REFERENCES cg.clients(id),
         CONSTRAINT FK_cg_orders_wallet_movement_id FOREIGN KEY (wallet_movement_id) REFERENCES cg.wallet_movements(id),
-        CONSTRAINT CK_cg_orders_status CHECK (status IN ('PENDIENTE', 'CONFIRMADA', 'PREPARANDO', 'LISTA', 'ENTREGADA', 'CANCELADA')),
+        CONSTRAINT CK_cg_orders_status CHECK (status IN ('PENDIENTE', 'CONFIRMADA', 'ENTREGADA', 'CANCELADA')),
         CONSTRAINT CK_cg_orders_fulfillment_type CHECK (fulfillment_type IN ('PICKUP', 'DELIVERY')),
         CONSTRAINT CK_cg_orders_payment_method CHECK (payment_method IN ('CANDYCASH')),
         CONSTRAINT CK_cg_orders_totals CHECK (
@@ -198,7 +198,7 @@ BEGIN
         changed_at DATETIME2(0) NOT NULL CONSTRAINT DF_cg_order_status_history_changed_at DEFAULT SYSUTCDATETIME(),
         reason NVARCHAR(250) NULL,
         CONSTRAINT FK_cg_order_status_history_order_id FOREIGN KEY (order_id) REFERENCES cg.orders(id),
-        CONSTRAINT CK_cg_order_status_history_to_status CHECK (to_status IN ('PENDIENTE', 'CONFIRMADA', 'PREPARANDO', 'LISTA', 'ENTREGADA', 'CANCELADA'))
+        CONSTRAINT CK_cg_order_status_history_to_status CHECK (to_status IN ('PENDIENTE', 'CONFIRMADA', 'ENTREGADA', 'CANCELADA'))
     );
 
     CREATE INDEX IX_cg_order_status_history_order_changed ON cg.order_status_history(order_id, changed_at DESC);

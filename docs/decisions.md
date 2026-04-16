@@ -31,16 +31,12 @@
 Estados oficiales:
 - `PENDIENTE`
 - `CONFIRMADA`
-- `PREPARANDO`
-- `LISTA`
 - `ENTREGADA`
 - `CANCELADA`
 
 Transiciones permitidas:
 - `PENDIENTE -> CONFIRMADA | CANCELADA`
-- `CONFIRMADA -> PREPARANDO | CANCELADA`
-- `PREPARANDO -> LISTA | CANCELADA`
-- `LISTA -> ENTREGADA | CANCELADA`
+- `CONFIRMADA -> ENTREGADA | CANCELADA`
 - `ENTREGADA` y `CANCELADA` son terminales.
 
 ## 6) Sync PhotoStudio (offline/online)
