@@ -20,6 +20,7 @@ JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection("Sync"));
+builder.Services.Configure<MediaStorageOptions>(builder.Configuration.GetSection("MediaStorage"));
 
 builder.Services.AddSingleton<IDbConnectionFactory, SqlConnectionFactory>();
 builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
@@ -32,6 +33,7 @@ builder.Services.AddScoped<IWalletService, WalletService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<ISyncService, SyncService>();
+builder.Services.AddScoped<IAdminMediaService, AdminMediaService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -329,6 +331,7 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSwagger();
 app.UseSwaggerUI();
 
+app.UseStaticFiles();
 app.UseCors("ClientApps");
 app.UseRateLimiter();
 app.UseAuthentication();
