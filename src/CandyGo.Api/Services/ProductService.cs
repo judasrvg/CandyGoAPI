@@ -33,6 +33,7 @@ SELECT id,
        description,
        image_url,
        price_candycash,
+       is_special,
        is_active,
        sort_order,
        created_at,
@@ -54,6 +55,7 @@ SELECT id,
        description,
        image_url,
        price_candycash,
+       is_special,
        is_active,
        sort_order,
        created_at,
@@ -74,6 +76,7 @@ SELECT id,
        description,
        image_url,
        price_candycash,
+       is_special,
        is_active,
        sort_order,
        created_at,
@@ -90,8 +93,8 @@ WHERE id = @Id",
         await using var connection = _connectionFactory.CreateConnection();
 
         var id = await connection.ExecuteScalarAsync<long>(@"
-INSERT INTO cg.products (name, description, image_url, price_candycash, is_active, sort_order)
-VALUES (@Name, @Description, @ImageUrl, @PriceCandyCash, @IsActive, @SortOrder);
+INSERT INTO cg.products (name, description, image_url, price_candycash, is_special, is_active, sort_order)
+VALUES (@Name, @Description, @ImageUrl, @PriceCandyCash, @IsSpecial, @IsActive, @SortOrder);
 SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
             request);
 
@@ -116,6 +119,7 @@ SET name = @Name,
     description = @Description,
     image_url = @ImageUrl,
     price_candycash = @PriceCandyCash,
+    is_special = @IsSpecial,
     is_active = @IsActive,
     sort_order = @SortOrder,
     updated_at = SYSUTCDATETIME()
@@ -127,6 +131,7 @@ WHERE id = @Id",
                 request.Description,
                 request.ImageUrl,
                 request.PriceCandyCash,
+                request.IsSpecial,
                 request.IsActive,
                 request.SortOrder
             });

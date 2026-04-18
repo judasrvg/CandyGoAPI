@@ -14,6 +14,8 @@ Este directorio separa scripts por base de datos para evitar confusiones.
 3. `candygo/003_simplify_order_statuses.sql`
 4. `candygo/004_store_schedule.sql`
 5. `candygo/005_notifications_and_contests.sql`
+6. `candygo/006_allow_slot_triple_contests.sql`
+7. `candygo/007_product_special_offer.sql`
 
 ### B) DB local PhotoStudio
 1. `photostudio/001_schema_local_sync.sql`

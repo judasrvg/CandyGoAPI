@@ -7,6 +7,7 @@ public sealed class ProductDto
     public string? Description { get; set; }
     public string? ImageUrl { get; set; }
     public decimal PriceCandyCash { get; set; }
+    public bool IsSpecial { get; set; }
     public bool IsActive { get; set; }
     public int SortOrder { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -19,6 +20,7 @@ public sealed class UpsertProductRequest
     public string? Description { get; set; }
     public string? ImageUrl { get; set; }
     public decimal PriceCandyCash { get; set; }
+    public bool IsSpecial { get; set; }
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; }
 }

@@ -7,9 +7,19 @@ public sealed class ContestBoxDto
     public decimal RewardCandyCash { get; set; }
 }
 
+public sealed class ContestSlotSymbolDto
+{
+    public string Key { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public string Emoji { get; set; } = "✨";
+    public decimal Weight { get; set; } = 1m;
+    public decimal RewardCandyCash { get; set; }
+}
+
 public sealed class ContestConfigDto
 {
     public IReadOnlyList<ContestBoxDto> Boxes { get; set; } = Array.Empty<ContestBoxDto>();
+    public IReadOnlyList<ContestSlotSymbolDto> SlotSymbols { get; set; } = Array.Empty<ContestSlotSymbolDto>();
     public string EmptyResultMessage { get; set; } = "Sigue intentando, pronto te toca.";
     public string WinResultPrefix { get; set; } = "Ganaste";
 }
@@ -39,6 +49,7 @@ public sealed class CreateContestRequest
 {
     public string ContestName { get; set; } = string.Empty;
     public string ContestSlug { get; set; } = string.Empty;
+    public string ContestType { get; set; } = "PICK_A_BOX";
     public string? Description { get; set; }
     public string? IconName { get; set; }
     public string AudienceType { get; set; } = "ALL";
@@ -54,6 +65,7 @@ public sealed class UpdateContestRequest
 {
     public string ContestName { get; set; } = string.Empty;
     public string ContestSlug { get; set; } = string.Empty;
+    public string ContestType { get; set; } = "PICK_A_BOX";
     public string? Description { get; set; }
     public string? IconName { get; set; }
     public string AudienceType { get; set; } = "ALL";
@@ -94,6 +106,7 @@ public sealed class ClientContestDto
 {
     public long Id { get; set; }
     public string ContestName { get; set; } = string.Empty;
+    public string ContestType { get; set; } = "PICK_A_BOX";
     public string? Description { get; set; }
     public string? IconName { get; set; }
     public int MaxPlaysPerClient { get; set; }
@@ -101,6 +114,15 @@ public sealed class ClientContestDto
     public int RemainingPlays { get; set; }
     public DateTime? EndsAtUtc { get; set; }
     public IReadOnlyList<ClientContestBoxDto> Boxes { get; set; } = Array.Empty<ClientContestBoxDto>();
+    public IReadOnlyList<ClientContestSymbolDto> Symbols { get; set; } = Array.Empty<ClientContestSymbolDto>();
+}
+
+public sealed class ClientContestSymbolDto
+{
+    public string Key { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public string Emoji { get; set; } = "✨";
+    public decimal RewardCandyCash { get; set; }
 }
 
 public sealed class PlayContestRequest
@@ -112,6 +134,7 @@ public sealed class PlayContestRequest
 public sealed class ContestPlayResultDto
 {
     public long ContestId { get; set; }
+    public string ContestType { get; set; } = string.Empty;
     public int SelectedSlot { get; set; }
     public bool IsWinner { get; set; }
     public decimal AwardedCandyCash { get; set; }
@@ -121,4 +144,8 @@ public sealed class ContestPlayResultDto
     public decimal WalletBalance { get; set; }
     public int RemainingPlays { get; set; }
     public DateTime PlayedAtUtc { get; set; }
+    public IReadOnlyList<string> ResultSymbols { get; set; } = Array.Empty<string>();
+    public string? WinningSymbolKey { get; set; }
+    public string? WinningSymbolLabel { get; set; }
+    public string? WinningSymbolEmoji { get; set; }
 }

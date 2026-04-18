@@ -118,6 +118,7 @@ BEGIN
         description NVARCHAR(600) NULL,
         image_url NVARCHAR(500) NULL,
         price_candycash DECIMAL(18,2) NOT NULL,
+        is_special BIT NOT NULL CONSTRAINT DF_cg_products_is_special DEFAULT (0),
         is_active BIT NOT NULL CONSTRAINT DF_cg_products_is_active DEFAULT (1),
         sort_order INT NOT NULL CONSTRAINT DF_cg_products_sort_order DEFAULT (0),
         created_at DATETIME2(0) NOT NULL CONSTRAINT DF_cg_products_created_at DEFAULT SYSUTCDATETIME(),

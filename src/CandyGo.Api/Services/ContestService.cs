@@ -22,6 +22,9 @@ public interface IContestService
 
 public sealed class ContestService : IContestService
 {
+    private const string ContestTypePickABox = "PICK_A_BOX";
+    private const string ContestTypeSlotTriple = "SLOT_TRIPLE";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true,
@@ -100,6 +103,7 @@ WHERE contest_id IN @ContestIds
         var normalized = NormalizeContestInput(
             request.ContestName,
             request.ContestSlug,
+            request.ContestType,
             request.Description,
             request.IconName,
             request.AudienceType,
@@ -139,7 +143,7 @@ VALUES
 (
     @ContestName,
     @ContestSlug,
-    'PICK_A_BOX',
+    @ContestType,
     @Description,
     @IconName,
     @ConfigJson,
@@ -158,6 +162,7 @@ SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
                 {
                     normalized.ContestName,
                     normalized.ContestSlug,
+                    normalized.ContestType,
                     normalized.Description,
                     normalized.IconName,
                     normalized.ConfigJson,
@@ -189,6 +194,7 @@ SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
         var normalized = NormalizeContestInput(
             request.ContestName,
             request.ContestSlug,
+            request.ContestType,
             request.Description,
             request.IconName,
             request.AudienceType,
@@ -209,6 +215,7 @@ SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
 UPDATE cg.contests
 SET contest_name = @ContestName,
     contest_slug = @ContestSlug,
+    contest_type = @ContestType,
     description = @Description,
     icon_name = @IconName,
     config_json = @ConfigJson,
@@ -225,6 +232,7 @@ WHERE id = @ContestId",
                     ContestId = contestId,
                     normalized.ContestName,
                     normalized.ContestSlug,
+                    normalized.ContestType,
                     normalized.Description,
                     normalized.IconName,
                     normalized.ConfigJson,
@@ -347,6 +355,7 @@ ORDER BY cp.played_at DESC, cp.id DESC",
 SELECT
     c.id,
     c.contest_name,
+    c.contest_type,
     c.description,
     c.icon_name,
     c.config_json,
@@ -380,7 +389,7 @@ ORDER BY c.updated_at DESC, c.id DESC",
         var activeContests = new List<ClientContestDto>();
         foreach (var row in rows)
         {
-            var config = ParseContestConfig(row.ConfigJson);
+            var config = ParseContestConfig(row.ContestType, row.ConfigJson);
             var remaining = Math.Max(0, row.MaxPlaysPerClient - row.UsedPlays);
             if (remaining <= 0)
             {
@@ -391,6 +400,7 @@ ORDER BY c.updated_at DESC, c.id DESC",
             {
                 Id = row.Id,
                 ContestName = row.ContestName,
+                ContestType = NormalizeContestType(row.ContestType),
                 Description = row.Description,
                 IconName = row.IconName,
                 MaxPlaysPerClient = row.MaxPlaysPerClient,
@@ -404,6 +414,15 @@ ORDER BY c.updated_at DESC, c.id DESC",
                         Slot = x.Slot,
                         Label = x.Label
                     })
+                    .ToList(),
+                Symbols = config.SlotSymbols
+                    .Select(x => new ClientContestSymbolDto
+                    {
+                        Key = x.Key,
+                        Label = x.Label,
+                        Emoji = x.Emoji,
+                        RewardCandyCash = x.RewardCandyCash
+                    })
                     .ToList()
             });
         }
@@ -416,13 +435,8 @@ ORDER BY c.updated_at DESC, c.id DESC",
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(clientId);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(contestId);
 
-        var selectedSlot = request.SelectedSlot;
-        if (selectedSlot <= 0 || selectedSlot > 12)
-        {
-            throw new ArgumentException("Selecciona una caja válida.");
-        }
-
         var requestId = request.ClientRequestId ?? Guid.NewGuid();
+        var requestedSlot = request.SelectedSlot;
 
         await using var connection = _connectionFactory.CreateConnection();
         await connection.OpenAsync();
@@ -451,6 +465,7 @@ WHERE id = @Id",
                 throw new KeyNotFoundException("Concurso no encontrado.");
             }
 
+            var contestType = NormalizeContestType(contest.ContestType);
             ValidateContestAvailability(contest);
 
             if (NormalizeAudienceType(contest.AudienceType) == "CLIENTS")
@@ -484,6 +499,7 @@ SELECT TOP (1)
     result_message,
     awarded_candycash,
     wallet_movement_id,
+    metadata_json,
     played_at
 FROM cg.contest_plays WITH (UPDLOCK, HOLDLOCK)
 WHERE contest_id = @ContestId
@@ -513,20 +529,27 @@ WHERE contest_id = @ContestId
             {
                 var walletBalanceExisting = await GetWalletBalanceAsync(connection, tx, clientId);
                 var remainingExisting = Math.Max(0, contest.MaxPlaysPerClient - usedPlays);
+                var existingMetadata = ParseContestPlayMetadata(existing.MetadataJson);
+                var existingConfig = ParseContestConfig(contestType, contest.ConfigJson);
                 await tx.CommitAsync();
 
                 return new ContestPlayResultDto
                 {
                     ContestId = contestId,
+                    ContestType = contestType,
                     SelectedSlot = existing.SelectedSlot,
                     IsWinner = existing.AwardedCandyCash > 0,
                     AwardedCandyCash = existing.AwardedCandyCash,
                     ResultCode = existing.ResultCode,
-                    ResultMessage = existing.ResultMessage ?? BuildResultMessage(ParseContestConfig(contest.ConfigJson), existing.AwardedCandyCash),
+                    ResultMessage = existing.ResultMessage ?? BuildResultMessage(existingConfig, existing.AwardedCandyCash),
                     WalletMovementId = existing.WalletMovementId,
                     WalletBalance = walletBalanceExisting,
                     RemainingPlays = remainingExisting,
-                    PlayedAtUtc = existing.PlayedAt
+                    PlayedAtUtc = existing.PlayedAt,
+                    ResultSymbols = existingMetadata.ResultSymbols,
+                    WinningSymbolKey = existingMetadata.WinningSymbol?.Key,
+                    WinningSymbolLabel = existingMetadata.WinningSymbol?.Label,
+                    WinningSymbolEmoji = existingMetadata.WinningSymbol?.Emoji
                 };
             }
 
@@ -535,33 +558,115 @@ WHERE contest_id = @ContestId
                 throw new InvalidOperationException("Ya alcanzaste el límite de intentos para este concurso.");
             }
 
-            var config = ParseContestConfig(contest.ConfigJson);
-            var orderedBoxes = config.Boxes
-                .OrderBy(x => x.Slot)
-                .ToList();
+            var config = ParseContestConfig(contestType, contest.ConfigJson);
+            var selectedSlot = 1;
+            var awarded = 0m;
+            var resultCode = "EMPTY";
+            var resultMessage = BuildResultMessage(config, 0m);
+            ContestSlotSymbolDto? winningSymbol = null;
+            IReadOnlyList<string> resultSymbols = Array.Empty<string>();
+            string metadataJson;
 
-            if (!orderedBoxes.Any(x => x.Slot == selectedSlot))
+            if (contestType == ContestTypePickABox)
             {
-                throw new ArgumentException("La caja seleccionada no está disponible en este concurso.");
+                selectedSlot = requestedSlot;
+                if (selectedSlot <= 0 || selectedSlot > 12)
+                {
+                    throw new ArgumentException("Selecciona una caja válida.");
+                }
+
+                var orderedBoxes = config.Boxes
+                    .OrderBy(x => x.Slot)
+                    .ToList();
+
+                if (!orderedBoxes.Any(x => x.Slot == selectedSlot))
+                {
+                    throw new ArgumentException("La caja seleccionada no está disponible en este concurso.");
+                }
+
+                var rewardPool = orderedBoxes
+                    .Select(x => new ContestRewardCandidate(x.Label, x.RewardCandyCash))
+                    .ToList();
+
+                ShuffleRewards(rewardPool);
+
+                var selectedIndex = orderedBoxes.FindIndex(x => x.Slot == selectedSlot);
+                var selectedReward = rewardPool[selectedIndex];
+                awarded = selectedReward.RewardCandyCash;
+
+                resultCode = awarded <= 0m
+                    ? "EMPTY"
+                    : awarded >= rewardPool.Max(x => x.RewardCandyCash)
+                        ? "WIN_TOP"
+                        : "WIN";
+
+                resultMessage = BuildResultMessage(config, awarded);
+                metadataJson = JsonSerializer.Serialize(new
+                {
+                    contestType,
+                    selected = new
+                    {
+                        slot = selectedSlot,
+                        label = selectedReward.Label,
+                        reward = selectedReward.RewardCandyCash
+                    },
+                    randomizedRewards = rewardPool
+                        .Select((item, index) => new
+                        {
+                            displayIndex = index + 1,
+                            item.Label,
+                            item.RewardCandyCash
+                        })
+                }, JsonOptions);
             }
+            else
+            {
+                var symbols = config.SlotSymbols.ToList();
+                var spin = new List<ContestSlotSymbolDto>(capacity: 3);
+                for (var reelIndex = 0; reelIndex < 3; reelIndex++)
+                {
+                    spin.Add(SpinSlotSymbol(symbols));
+                }
 
-            var rewardPool = orderedBoxes
-                .Select(x => new ContestRewardCandidate(x.Label, x.RewardCandyCash))
-                .ToList();
+                resultSymbols = spin.Select(x => x.Emoji).ToList();
+                var trifecta = spin.All(x => string.Equals(x.Key, spin[0].Key, StringComparison.OrdinalIgnoreCase));
+                if (trifecta)
+                {
+                    winningSymbol = spin[0];
+                    awarded = winningSymbol.RewardCandyCash;
+                }
 
-            ShuffleRewards(rewardPool);
+                var topReward = symbols.Max(x => x.RewardCandyCash);
+                resultCode = awarded <= 0m
+                    ? "MISS"
+                    : awarded >= topReward
+                        ? "JACKPOT"
+                        : "WIN";
 
-            var selectedIndex = orderedBoxes.FindIndex(x => x.Slot == selectedSlot);
-            var selectedReward = rewardPool[selectedIndex];
-            var awarded = selectedReward.RewardCandyCash;
-
-            var resultCode = awarded <= 0m
-                ? "EMPTY"
-                : awarded >= rewardPool.Max(x => x.RewardCandyCash)
-                    ? "WIN_TOP"
-                    : "WIN";
-
-            var resultMessage = BuildResultMessage(config, awarded);
+                resultMessage = BuildSlotResultMessage(config, awarded, winningSymbol);
+                metadataJson = JsonSerializer.Serialize(new
+                {
+                    contestType,
+                    spin = spin
+                        .Select((item, index) => new
+                        {
+                            reel = index + 1,
+                            item.Key,
+                            item.Label,
+                            item.Emoji,
+                            item.RewardCandyCash
+                        }),
+                    winningSymbol = winningSymbol is null
+                        ? null
+                        : new
+                        {
+                            winningSymbol.Key,
+                            winningSymbol.Label,
+                            winningSymbol.Emoji,
+                            winningSymbol.RewardCandyCash
+                        }
+                }, JsonOptions);
+            }
 
             long? walletMovementId = null;
             if (awarded > 0m)
@@ -584,23 +689,6 @@ WHERE contest_id = @ContestId
 
                 walletMovementId = movementParams.Get<long>("@MovementId");
             }
-
-            var metadataJson = JsonSerializer.Serialize(new
-            {
-                selected = new
-                {
-                    slot = selectedSlot,
-                    label = selectedReward.Label,
-                    reward = selectedReward.RewardCandyCash
-                },
-                randomizedRewards = rewardPool
-                    .Select((item, index) => new
-                    {
-                        displayIndex = index + 1,
-                        item.Label,
-                        item.RewardCandyCash
-                    })
-            }, JsonOptions);
 
             var playedAtUtc = await connection.ExecuteScalarAsync<DateTime>(@"
 INSERT INTO cg.contest_plays
@@ -658,6 +746,7 @@ SELECT CAST(SYSUTCDATETIME() AS DATETIME2(0));",
             return new ContestPlayResultDto
             {
                 ContestId = contestId,
+                ContestType = contestType,
                 SelectedSlot = selectedSlot,
                 IsWinner = awarded > 0,
                 AwardedCandyCash = awarded,
@@ -666,7 +755,11 @@ SELECT CAST(SYSUTCDATETIME() AS DATETIME2(0));",
                 WalletMovementId = walletMovementId,
                 WalletBalance = walletBalance,
                 RemainingPlays = remaining,
-                PlayedAtUtc = playedAtUtc
+                PlayedAtUtc = playedAtUtc,
+                ResultSymbols = resultSymbols,
+                WinningSymbolKey = winningSymbol?.Key,
+                WinningSymbolLabel = winningSymbol?.Label,
+                WinningSymbolEmoji = winningSymbol?.Emoji
             };
         }
         catch
@@ -732,10 +825,10 @@ WHERE contest_id = @ContestId
             Id = row.Id,
             ContestName = row.ContestName,
             ContestSlug = row.ContestSlug,
-            ContestType = row.ContestType,
+            ContestType = NormalizeContestType(row.ContestType),
             Description = row.Description,
             IconName = row.IconName,
-            Config = ParseContestConfig(row.ConfigJson),
+            Config = ParseContestConfig(row.ContestType, row.ConfigJson),
             AudienceType = row.AudienceType,
             MaxPlaysPerClient = row.MaxPlaysPerClient,
             StartsAtUtc = row.StartsAtUtc,
@@ -749,11 +842,11 @@ WHERE contest_id = @ContestId
         };
     }
 
-    private static ContestConfigDto ParseContestConfig(string? rawJson)
+    private static ContestConfigDto ParseContestConfig(string? contestType, string? rawJson)
     {
         if (string.IsNullOrWhiteSpace(rawJson))
         {
-            throw new InvalidOperationException("El concurso no tiene configuración de cajas.");
+            throw new InvalidOperationException("El concurso no tiene configuración.");
         }
 
         ContestConfigDto? parsed;
@@ -771,10 +864,36 @@ WHERE contest_id = @ContestId
             throw new InvalidOperationException("La configuración del concurso no pudo leerse.");
         }
 
-        return NormalizeContestConfig(parsed);
+        return NormalizeContestConfig(contestType, parsed);
     }
 
-    private static ContestConfigDto NormalizeContestConfig(ContestConfigDto config)
+    private static ContestConfigDto NormalizeContestConfig(string? contestType, ContestConfigDto config)
+    {
+        var normalizedType = NormalizeContestType(contestType);
+        var emptyResultMessage = NormalizeOptional(config.EmptyResultMessage, 180) ?? "Sigue intentando, pronto te toca.";
+        var winResultPrefix = NormalizeOptional(config.WinResultPrefix, 60) ?? "Ganaste";
+
+        if (normalizedType == ContestTypePickABox)
+        {
+            return new ContestConfigDto
+            {
+                Boxes = NormalizeContestBoxes(config),
+                SlotSymbols = Array.Empty<ContestSlotSymbolDto>(),
+                EmptyResultMessage = emptyResultMessage,
+                WinResultPrefix = winResultPrefix
+            };
+        }
+
+        return new ContestConfigDto
+        {
+            Boxes = Array.Empty<ContestBoxDto>(),
+            SlotSymbols = NormalizeContestSlotSymbols(config),
+            EmptyResultMessage = emptyResultMessage,
+            WinResultPrefix = winResultPrefix
+        };
+    }
+
+    private static IReadOnlyList<ContestBoxDto> NormalizeContestBoxes(ContestConfigDto config)
     {
         var boxes = (config.Boxes ?? Array.Empty<ContestBoxDto>())
             .Where(box => box is not null)
@@ -812,12 +931,72 @@ WHERE contest_id = @ContestId
             throw new ArgumentException("Las recompensas no pueden ser negativas.");
         }
 
-        return new ContestConfigDto
+        return boxes;
+    }
+
+    private static IReadOnlyList<ContestSlotSymbolDto> NormalizeContestSlotSymbols(ContestConfigDto config)
+    {
+        var symbols = (config.SlotSymbols ?? Array.Empty<ContestSlotSymbolDto>())
+            .Where(symbol => symbol is not null)
+            .Select(symbol => new ContestSlotSymbolDto
+            {
+                Key = NormalizeSymbolKey(symbol.Key),
+                Label = NormalizeRequired(symbol.Label, "slotSymbols.label", 60, 1),
+                Emoji = NormalizeOptional(symbol.Emoji, 16) ?? "✨",
+                Weight = decimal.Round(symbol.Weight, 4),
+                RewardCandyCash = decimal.Round(symbol.RewardCandyCash, 2)
+            })
+            .ToList();
+
+        if (symbols.Count < 3)
         {
-            Boxes = boxes,
-            EmptyResultMessage = NormalizeOptional(config.EmptyResultMessage, 180) ?? "Sigue intentando, pronto te toca.",
-            WinResultPrefix = NormalizeOptional(config.WinResultPrefix, 60) ?? "Ganaste"
-        };
+            throw new ArgumentException("La ruleta debe tener al menos 3 símbolos.");
+        }
+
+        if (symbols.Count > 12)
+        {
+            throw new ArgumentException("La ruleta soporta máximo 12 símbolos.");
+        }
+
+        if (symbols.GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+        {
+            throw new ArgumentException("No se permiten claves repetidas en símbolos de ruleta.");
+        }
+
+        if (symbols.Any(x => x.Weight <= 0m))
+        {
+            throw new ArgumentException("Cada símbolo de ruleta debe tener peso mayor que 0.");
+        }
+
+        if (symbols.Any(x => x.RewardCandyCash < 0m))
+        {
+            throw new ArgumentException("Las recompensas de ruleta no pueden ser negativas.");
+        }
+
+        return symbols;
+    }
+
+    private static string NormalizeSymbolKey(string? key)
+    {
+        var normalized = (key ?? string.Empty)
+            .Trim()
+            .ToLowerInvariant();
+
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new ArgumentException("slotSymbols.key es requerido.");
+        }
+
+        var clean = new string(normalized
+            .Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_')
+            .ToArray());
+
+        if (clean.Length < 2 || clean.Length > 24)
+        {
+            throw new ArgumentException("slotSymbols.key debe tener entre 2 y 24 caracteres alfanuméricos.");
+        }
+
+        return clean;
     }
 
     private static string BuildResultMessage(ContestConfigDto config, decimal reward)
@@ -829,6 +1008,121 @@ WHERE contest_id = @ContestId
 
         var prefix = NormalizeOptional(config.WinResultPrefix, 60) ?? "Ganaste";
         return $"{prefix} {reward.ToString("0.##", CultureInfo.InvariantCulture)} CC.";
+    }
+
+    private static string BuildSlotResultMessage(ContestConfigDto config, decimal reward, ContestSlotSymbolDto? winningSymbol)
+    {
+        if (reward <= 0m || winningSymbol is null)
+        {
+            return NormalizeOptional(config.EmptyResultMessage, 180) ?? "Sigue intentando, pronto te toca.";
+        }
+
+        var prefix = NormalizeOptional(config.WinResultPrefix, 60) ?? "Ganaste";
+        var symbolLabel = NormalizeOptional(winningSymbol.Label, 60) ?? "símbolo";
+        return $"{prefix} {reward.ToString("0.##", CultureInfo.InvariantCulture)} CC por trifecta de {symbolLabel} {winningSymbol.Emoji}.";
+    }
+
+    private static ContestSlotSymbolDto SpinSlotSymbol(IReadOnlyList<ContestSlotSymbolDto> symbols)
+    {
+        if (symbols.Count == 0)
+        {
+            throw new ArgumentException("No hay símbolos disponibles para ruleta.");
+        }
+
+        var totalWeight = symbols.Sum(x => (double)x.Weight);
+        if (totalWeight <= 0d)
+        {
+            throw new ArgumentException("La ruleta no tiene pesos válidos.");
+        }
+
+        var random = RandomNumberGenerator.GetInt32(0, int.MaxValue) / (double)int.MaxValue;
+        var target = random * totalWeight;
+        var cursor = 0d;
+        foreach (var symbol in symbols)
+        {
+            cursor += (double)symbol.Weight;
+            if (target <= cursor)
+            {
+                return symbol;
+            }
+        }
+
+        return symbols[^1];
+    }
+
+    private static ContestPlayMetadataDto ParseContestPlayMetadata(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return ContestPlayMetadataDto.Empty;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(metadataJson);
+            var root = document.RootElement;
+            var resultSymbols = new List<string>();
+            if (root.TryGetProperty("spin", out var spinElement) && spinElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in spinElement.EnumerateArray())
+                {
+                    var emoji = ReadJsonString(item, "emoji", "Emoji");
+                    if (!string.IsNullOrWhiteSpace(emoji))
+                    {
+                        resultSymbols.Add(emoji);
+                    }
+                }
+            }
+
+            ContestWinningSymbolDto? winning = null;
+            if (root.TryGetProperty("winningSymbol", out var winningElement) && winningElement.ValueKind == JsonValueKind.Object)
+            {
+                var key = ReadJsonString(winningElement, "key", "Key");
+                var label = ReadJsonString(winningElement, "label", "Label");
+                var emoji = ReadJsonString(winningElement, "emoji", "Emoji");
+                if (!string.IsNullOrWhiteSpace(key) || !string.IsNullOrWhiteSpace(label) || !string.IsNullOrWhiteSpace(emoji))
+                {
+                    winning = new ContestWinningSymbolDto
+                    {
+                        Key = key,
+                        Label = label,
+                        Emoji = emoji
+                    };
+                }
+            }
+
+            return new ContestPlayMetadataDto
+            {
+                ResultSymbols = resultSymbols,
+                WinningSymbol = winning
+            };
+        }
+        catch (JsonException)
+        {
+            return ContestPlayMetadataDto.Empty;
+        }
+    }
+
+    private static string? ReadJsonString(JsonElement element, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!element.TryGetProperty(propertyName, out var value))
+            {
+                continue;
+            }
+
+            var text = value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : value.ToString();
+
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                return text.Trim();
+            }
+        }
+
+        return null;
     }
 
     private static void ShuffleRewards(List<ContestRewardCandidate> rewards)
@@ -894,6 +1188,17 @@ WHERE c.id IN @ClientIds",
         };
     }
 
+    private static string NormalizeContestType(string? value)
+    {
+        var normalized = (value ?? string.Empty).Trim().ToUpperInvariant();
+        return normalized switch
+        {
+            ContestTypePickABox => ContestTypePickABox,
+            ContestTypeSlotTriple => ContestTypeSlotTriple,
+            _ => throw new ArgumentException("ContestType inválido. Valores permitidos: PICK_A_BOX | SLOT_TRIPLE.")
+        };
+    }
+
     private static IReadOnlyList<long> NormalizeClientIds(IReadOnlyList<long>? source)
     {
         return (source ?? Array.Empty<long>())
@@ -905,6 +1210,7 @@ WHERE c.id IN @ClientIds",
     private static ContestInputNormalized NormalizeContestInput(
         string? contestName,
         string? contestSlug,
+        string? contestType,
         string? description,
         string? iconName,
         string? audienceType,
@@ -917,6 +1223,7 @@ WHERE c.id IN @ClientIds",
     {
         var normalizedName = NormalizeRequired(contestName, "contestName", 120, 3);
         var normalizedSlug = NormalizeSlug(contestSlug);
+        var normalizedContestType = NormalizeContestType(contestType);
         var normalizedDescription = NormalizeOptional(description, 500);
         var normalizedIconName = NormalizeOptional(iconName, 80) ?? "gift-box";
         var normalizedAudience = NormalizeAudienceType(audienceType);
@@ -931,7 +1238,7 @@ WHERE c.id IN @ClientIds",
             throw new ArgumentException("EndsAtUtc no puede ser menor que StartsAtUtc.");
         }
 
-        var normalizedConfig = NormalizeContestConfig(config ?? new ContestConfigDto());
+        var normalizedConfig = NormalizeContestConfig(normalizedContestType, config ?? new ContestConfigDto());
 
         var targets = normalizedAudience == "CLIENTS"
             ? NormalizeClientIds(targetClientIds)
@@ -942,6 +1249,7 @@ WHERE c.id IN @ClientIds",
         return new ContestInputNormalized(
             normalizedName,
             normalizedSlug,
+            normalizedContestType,
             normalizedDescription,
             normalizedIconName,
             normalizedAudience,
@@ -1041,10 +1349,7 @@ WHERE c.id IN @ClientIds",
             throw new InvalidOperationException("Este concurso ya finalizó.");
         }
 
-        if (!string.Equals(contest.ContestType, "PICK_A_BOX", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Tipo de concurso no soportado.");
-        }
+        _ = NormalizeContestType(contest.ContestType);
     }
 
     private static async Task<decimal> GetWalletBalanceAsync(System.Data.IDbConnection connection, IDbTransaction tx, long clientId)
@@ -1064,6 +1369,7 @@ WHERE client_id = @ClientId",
     private sealed record ContestInputNormalized(
         string ContestName,
         string ContestSlug,
+        string ContestType,
         string? Description,
         string IconName,
         string AudienceType,
@@ -1104,6 +1410,7 @@ WHERE client_id = @ClientId",
     {
         public long Id { get; set; }
         public string ContestName { get; set; } = string.Empty;
+        public string ContestType { get; set; } = string.Empty;
         public string? Description { get; set; }
         public string? IconName { get; set; }
         public string ConfigJson { get; set; } = string.Empty;
@@ -1133,6 +1440,21 @@ WHERE client_id = @ClientId",
         public string? ResultMessage { get; set; }
         public decimal AwardedCandyCash { get; set; }
         public long? WalletMovementId { get; set; }
+        public string? MetadataJson { get; set; }
         public DateTime PlayedAt { get; set; }
+    }
+
+    private sealed class ContestPlayMetadataDto
+    {
+        public static ContestPlayMetadataDto Empty { get; } = new();
+        public IReadOnlyList<string> ResultSymbols { get; set; } = Array.Empty<string>();
+        public ContestWinningSymbolDto? WinningSymbol { get; set; }
+    }
+
+    private sealed class ContestWinningSymbolDto
+    {
+        public string? Key { get; set; }
+        public string? Label { get; set; }
+        public string? Emoji { get; set; }
     }
 }

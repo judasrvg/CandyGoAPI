@@ -136,7 +136,7 @@ BEGIN
         updated_at DATETIME2(0) NOT NULL CONSTRAINT DF_cg_contests_updated_at DEFAULT SYSUTCDATETIME(),
         row_version ROWVERSION,
         CONSTRAINT CK_cg_contests_slug CHECK (LEN(contest_slug) >= 3),
-        CONSTRAINT CK_cg_contests_type CHECK (contest_type IN ('PICK_A_BOX')),
+        CONSTRAINT CK_cg_contests_type CHECK (contest_type IN ('PICK_A_BOX', 'SLOT_TRIPLE')),
         CONSTRAINT CK_cg_contests_audience_type CHECK (audience_type IN ('ALL', 'CLIENTS')),
         CONSTRAINT CK_cg_contests_max_plays CHECK (max_plays_per_client >= 1 AND max_plays_per_client <= 20),
         CONSTRAINT CK_cg_contests_date_range CHECK (ends_at_utc IS NULL OR starts_at_utc IS NULL OR ends_at_utc >= starts_at_utc)
