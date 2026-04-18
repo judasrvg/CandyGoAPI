@@ -11,6 +11,8 @@ Este directorio separa scripts por base de datos para evitar confusiones.
 ### A) DB remota CandyGo
 1. `candygo/001_schema.sql`
 2. `candygo/002_seed_defaults.sql`
+3. `candygo/003_simplify_order_statuses.sql`
+4. `candygo/004_store_schedule.sql`
 
 ### B) DB local PhotoStudio
 1. `photostudio/001_schema_local_sync.sql`

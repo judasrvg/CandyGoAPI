@@ -25,7 +25,9 @@ public sealed class SettingsController : ControllerBase
         {
             DeliveryFee = rules.DeliveryFee,
             RewardPercent = rules.RewardPercent,
-            CashConversionRate = rules.CashConversionRate
+            CashConversionRate = rules.CashConversionRate,
+            StoreOpenTime = rules.StoreOpenTime,
+            StoreCloseTime = rules.StoreCloseTime
         });
     }
 }

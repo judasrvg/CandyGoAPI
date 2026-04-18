@@ -14,13 +14,16 @@ BEGIN
         delivery_fee DECIMAL(18,2) NOT NULL CONSTRAINT DF_cg_business_rules_delivery_fee DEFAULT (0),
         reward_percent DECIMAL(5,2) NOT NULL CONSTRAINT DF_cg_business_rules_reward_percent DEFAULT (10),
         cash_conversion_rate DECIMAL(10,4) NOT NULL CONSTRAINT DF_cg_business_rules_cash_conversion_rate DEFAULT (1),
+        store_open_time TIME(0) NOT NULL CONSTRAINT DF_cg_business_rules_store_open_time DEFAULT ('09:00'),
+        store_close_time TIME(0) NOT NULL CONSTRAINT DF_cg_business_rules_store_close_time DEFAULT ('18:00'),
         updated_by NVARCHAR(120) NULL,
         updated_at DATETIME2(0) NOT NULL CONSTRAINT DF_cg_business_rules_updated_at DEFAULT SYSUTCDATETIME(),
         row_version ROWVERSION,
         CONSTRAINT CK_cg_business_rules_single_row CHECK (id = 1),
         CONSTRAINT CK_cg_business_rules_reward_percent CHECK (reward_percent >= 0 AND reward_percent <= 100),
         CONSTRAINT CK_cg_business_rules_delivery_fee CHECK (delivery_fee >= 0),
-        CONSTRAINT CK_cg_business_rules_cash_rate CHECK (cash_conversion_rate > 0)
+        CONSTRAINT CK_cg_business_rules_cash_rate CHECK (cash_conversion_rate > 0),
+        CONSTRAINT CK_cg_business_rules_store_schedule CHECK (store_open_time <> store_close_time)
     );
 END
 GO
