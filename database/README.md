@@ -13,6 +13,7 @@ Este directorio separa scripts por base de datos para evitar confusiones.
 2. `candygo/002_seed_defaults.sql`
 3. `candygo/003_simplify_order_statuses.sql`
 4. `candygo/004_store_schedule.sql`
+5. `candygo/005_notifications_and_contests.sql`
 
 ### B) DB local PhotoStudio
 1. `photostudio/001_schema_local_sync.sql`
