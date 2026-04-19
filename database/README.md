@@ -17,6 +17,10 @@ Este directorio separa scripts por base de datos para evitar confusiones.
 6. `candygo/006_allow_slot_triple_contests.sql`
 7. `candygo/007_product_special_offer.sql`
 
+Nota:
+- Si la ruleta (`SLOT_TRIPLE`) no guarda en Admin, vuelve a ejecutar `006_allow_slot_triple_contests.sql`.
+  Este script ahora elimina cualquier check constraint legado sobre `contest_type` y recrea el constraint correcto.
+
 ### B) DB local PhotoStudio
 1. `photostudio/001_schema_local_sync.sql`
 2. `photostudio/002_backfill_local_clients_from_candygo.sql` (opcional, tras primer pull/sync)

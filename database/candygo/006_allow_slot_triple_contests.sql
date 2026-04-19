@@ -3,18 +3,20 @@ GO
 
 IF OBJECT_ID('cg.contests', 'U') IS NOT NULL
 BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM sys.check_constraints
-        WHERE name = 'CK_cg_contests_type'
-          AND parent_object_id = OBJECT_ID('cg.contests')
-    )
+    DECLARE @dropSql NVARCHAR(MAX) = N'';
+
+    SELECT @dropSql = @dropSql + N'ALTER TABLE cg.contests DROP CONSTRAINT ' + QUOTENAME(cc.name) + N';' + CHAR(10)
+    FROM sys.check_constraints cc
+    WHERE cc.parent_object_id = OBJECT_ID('cg.contests')
+      AND cc.definition LIKE '%contest_type%';
+
+    IF LEN(@dropSql) > 0
     BEGIN
-        ALTER TABLE cg.contests DROP CONSTRAINT CK_cg_contests_type;
+        EXEC sp_executesql @dropSql;
     END
 
     ALTER TABLE cg.contests
-    ADD CONSTRAINT CK_cg_contests_type
-        CHECK (contest_type IN ('PICK_A_BOX', 'SLOT_TRIPLE'));
+        ADD CONSTRAINT CK_cg_contests_type
+            CHECK (contest_type IN ('PICK_A_BOX', 'SLOT_TRIPLE'));
 END
 GO
